@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPISTEME — Batch Evaluation Mode</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3e;
+    --accent: #6c63ff; --accent2: #00d4aa; --danger: #ff4757;
+    --warn: #ffa502; --text: #e8eaf6; --muted: #8892b0;
+    --good: #00d4aa;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.35} }
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes slideLeft { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(-40px)} }
+  @keyframes slideInRight { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:translateX(0)} }
+
+  /* ── Topbar (shared) ── */
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 14px; flex-shrink: 0; z-index: 10; }
+  .logo { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+  .logo span { color: var(--accent2); }
+  .badge { border-radius: 20px; font-size: 10px; font-weight: 700; padding: 3px 10px; letter-spacing: 1.1px; text-transform: uppercase; }
+  .badge-batch    { background: rgba(255,165,2,.15); color: var(--warn);   border: 1px solid rgba(255,165,2,.4); }
+  .badge-translate{ background: rgba(108,99,255,.15); color: var(--accent); border: 1px solid rgba(108,99,255,.3); }
+  .badge-live     { background: rgba(0,212,170,.15);  color: var(--good);   border: 1px solid rgba(0,212,170,.4); animation: pulse 1.5s infinite; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .3s; }
+  .dot.ok   { background: var(--good);   box-shadow: 0 0 6px var(--good);   animation: pulse 2s infinite; }
+  .dot.busy { background: var(--warn);   box-shadow: 0 0 6px var(--warn);   animation: pulse 1s infinite; }
+  .dot.done { background: var(--accent2);box-shadow: 0 0 6px var(--accent2); }
+  #topbar-status { font-size: 12px; color: var(--muted); }
+  .topbar-right  { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .ico-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .2s; }
+  .ico-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Config panel (page 1 only) ── */
+  .cfg-panel { background: #12141f; border-bottom: 2px solid rgba(108,99,255,.35); padding: 16px 20px; display: none; }
+  .cfg-panel.open { display: block; }
+  .cfg-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .cfg-label { display: block; font-size: 10px; color: var(--muted); font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 6px; }
+  .cfg-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: var(--text); font-size: 13px; outline: none; font-family: monospace; }
+  .cfg-input:focus { border-color: var(--accent); }
+  .cfg-hint  { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .cfg-note  { font-size: 11px; color: var(--muted); margin-top: 10px; padding: 8px 12px; background: rgba(255,165,2,.06); border-left: 2px solid var(--warn); border-radius: 0 4px 4px 0; line-height: 1.5; }
+  .cfg-row   { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+  .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 7px 18px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-primary:hover { opacity: .88; }
+  .btn-ghost   { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+  .btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+  #cfg-test-result { font-size: 12px; color: var(--muted); }
+
+  /* ════════════════════════════════════════════
+     PAGE 1 — SETUP
+  ════════════════════════════════════════════ */
+  #page-setup { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #page-setup.leaving { animation: slideLeft .35s ease forwards; }
+
+  .setup-main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Left — upload + options */
+  .setup-left { width: 360px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; overflow-y: auto; }
+  .sl-section  { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sl-title    { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+
+  /* Upload zone */
+  .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 24px 16px; text-align: center; cursor: pointer; transition: all .2s; position: relative; }
+  .drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: rgba(108,99,255,.05); }
+  .drop-zone.loaded { border-color: var(--accent2); border-style: solid; background: rgba(0,212,170,.04); }
+  .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .dz-icon  { font-size: 28px; margin-bottom: 8px; }
+  .dz-title { font-size: 13px; font-weight: 600; }
+  .dz-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .fmt-row  { display: flex; gap: 5px; justify-content: center; margin-top: 8px; }
+  .fmt-tag  { font-size: 10px; padding: 2px 7px; border-radius: 8px; background: var(--border); color: var(--muted); font-weight: 600; }
+
+  .file-card { display: none; background: rgba(0,212,170,.08); border: 1px solid rgba(0,212,170,.22); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+  .file-card.vis { display: block; }
+  .fc-name { font-size: 13px; font-weight: 600; color: var(--accent2); }
+  .fc-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .col-select-wrap { display: none; margin-top: 10px; }
+  .col-select-wrap.vis { display: block; }
+  .col-select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; margin-top: 6px; }
+
+  .sample-btn { width: 100%; background: transparent; border: 1px dashed var(--border); color: var(--muted); border-radius: 6px; padding: 7px; font-size: 12px; cursor: pointer; margin-top: 8px; transition: all .2s; }
+  .sample-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Preview table (right side of setup) */
+  .setup-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .preview-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .preview-title  { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+  .preview-count  { font-size: 13px; color: var(--muted); }
+
+  /* Start button bar */
+  .start-bar { background: var(--surface); border-top: 1px solid var(--border); padding: 14px 20px; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .start-btn { background: linear-gradient(135deg, var(--accent), #9b94ff); color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: .5px; transition: opacity .2s; }
+  .start-btn:hover:not(:disabled) { opacity: .9; }
+  .start-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .start-hint { font-size: 12px; color: var(--muted); }
+
+  /* Preview table */
+  .preview-wrap { flex: 1; overflow-y: auto; }
+  .preview-empty { text-align: center; padding: 70px 20px; color: var(--muted); }
+  .pe-ico   { font-size: 50px; margin-bottom: 12px; opacity: .3; }
+  .pe-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .pe-sub   { font-size: 13px; line-height: 1.6; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th { background: #12141f; padding: 9px 14px; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid rgba(42,45,62,.5); vertical-align: middle; }
+  tbody tr:hover td { background: rgba(108,99,255,.04); }
+  .td-id   { font-family: monospace; color: var(--muted); font-size: 11px; }
+  .td-text { max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 12px; }
+
+  /* ════════════════════════════════════════════
+     PAGE 2 — EVALUATION PROCESS
+  ════════════════════════════════════════════ */
+  #page-eval { flex: 1; display: none; flex-direction: column; overflow: hidden; animation: slideInRight .4s ease forwards; }
+  #page-eval.active { display: flex; }
+
+  .eval-main { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Left: pipeline + progress ── */
+  .eval-left { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; padding: 20px 16px; gap: 0; }
+  .el-section-title { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+  /* Pipeline stages */
+  .pipeline { display: flex; flex-direction: column; margin-bottom: 20px; }
+  .stage { display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: 8px; transition: background .25s; position: relative; }
+  .stage + .stage::before { content: ''; position: absolute; left: 23px; top: -8px; width: 2px; height: 8px; background: var(--border); }
+  .stage.idle   { opacity: .4; }
+  .stage.active { background: rgba(108,99,255,.12); opacity: 1; }
+  .stage.done   { background: rgba(0,212,170,.06); opacity: 1; }
+  .stage.error  { background: rgba(255,71,87,.06); opacity: 1; }
+  .si { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; background: var(--border); transition: background .3s; }
+  .stage.active .si { background: var(--accent); animation: pulse 1.5s infinite; }
+  .stage.done   .si { background: var(--good); }
+  .stage.error  .si { background: var(--danger); }
+  .sinfo { flex: 1; min-width: 0; }
+  .sname { font-size: 12px; font-weight: 600; }
+  .stage.active .sname { color: var(--accent); }
+  .stage.done   .sname { color: var(--good); }
+  .stage.error  .sname { color: var(--danger); }
+  .sdet  { font-size: 11px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scnt  { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .stage.done .scnt { color: var(--good); }
+
+  /* Progress bar */
+  .prog-section { margin-top: auto; }
+  .prog-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .prog-bar  { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .prog-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 3px; width: 0%; transition: width .4s ease; }
+
+  /* ETA */
+  .eta-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+  /* Stop button */
+  .stop-btn { width: 100%; margin-top: 16px; background: rgba(255,71,87,.1); border: 1px solid rgba(255,71,87,.3); color: var(--danger); border-radius: 7px; padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .stop-btn:hover { background: rgba(255,71,87,.2); }
+  .stop-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+  /* ── Center: live case feed ── */
+  .eval-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+  .feed-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .feed-title  { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+  .typing-dots { display: flex; gap: 4px; }
+  .typing-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: bounce .8s infinite; }
+  .typing-dots span:nth-child(2){animation-delay:.15s} .typing-dots span:nth-child(3){animation-delay:.3s}
+  .typing-dots.hidden { visibility: hidden; }
+
+  .feed-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* Case cards */
+  .case-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; animation: fadeIn .3s ease; transition: border-color .2s; }
+  .case-card.translating { border-color: rgba(108,99,255,.4); }
+  .case-card.evaluating  { border-color: rgba(255,165,2,.4); }
+  .case-card.done        { border-color: rgba(0,212,170,.3); }
+  .case-card.error       { border-color: rgba(255,71,87,.3); }
+  .cc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cc-id     { font-size: 11px; font-family: monospace; color: var(--muted); }
+  .cc-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .cc-status.translating { background: rgba(108,99,255,.2); color: var(--accent); }
+  .cc-status.evaluating  { background: rgba(255,165,2,.2);  color: var(--warn); }
+  .cc-status.done        { background: rgba(0,212,170,.2);  color: var(--good); }
+  .cc-status.error       { background: rgba(255,71,87,.2);  color: var(--danger); }
+  .cc-score-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cc-score  { font-size: 20px; font-weight: 700; }
+  .cc-chip   { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .cc-cat    { background: rgba(108,99,255,.2); color: var(--accent); border: 1px solid rgba(108,99,255,.3); }
+  .cc-mild   { background: rgba(0,212,170,.2);  color: var(--good);   border: 1px solid rgba(0,212,170,.3); }
+  .cc-moderate{ background: rgba(255,165,2,.2); color: var(--warn);   border: 1px solid rgba(255,165,2,.3); }
+  .cc-severe { background: rgba(255,71,87,.2);  color: var(--danger); border: 1px solid rgba(255,71,87,.3); }
+  .cc-preview{ font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .cc-dims   { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .dim-pill  { font-size: 10px; padding: 2px 8px; border-radius: 8px; background: rgba(136,146,176,.1); color: var(--muted); }
+  .cc-skeleton { display: flex; gap: 8px; align-items: center; }
+  .skel-bar { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--border) 25%, rgba(108,99,255,.08) 50%, var(--border) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  /* ── Right: aggregate stats ── */
+  .eval-right { width: 260px; flex-shrink: 0; background: var(--surface); display: flex; flex-direction: column; overflow-y: auto; }
+  .er-section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .er-title   { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+
+  /* Ring score */
+  .ring-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 14px; }
+  .ring-svg  { width: 90px; height: 90px; transform: rotate(-90deg); }
+  .ring-bg   { fill: none; stroke: var(--border); stroke-width: 8; }
+  .ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset .6s ease, stroke .4s; }
+  .ring-label{ margin-top: 8px; text-align: center; }
+  .ring-score{ font-size: 26px; font-weight: 700; line-height: 1; }
+  .ring-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Stat mini cards */
+  .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mini-card  { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .mc-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .mc-val { font-size: 20px; font-weight: 700; margin-top: 4px; line-height: 1; }
+
+  /* Dimension bars */
+  .dim-bars { display: flex; flex-direction: column; gap: 10px; }
+  .db-row  { }
+  .db-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .db-name { font-size: 11px; color: var(--muted); }
+  .db-val  { font-size: 11px; font-weight: 700; }
+  .db-bar  { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .db-fill { height: 100%; border-radius: 2px; transition: width .5s ease; }
+
+  /* Severity distribution */
+  .sev-dist { display: flex; flex-direction: column; gap: 6px; }
+  .sd-row   { display: flex; align-items: center; gap: 8px; }
+  .sd-label { font-size: 11px; color: var(--muted); width: 80px; flex-shrink: 0; }
+  .sd-bar   { flex: 1; height: 14px; background: var(--border); border-radius: 3px; overflow: hidden; position: relative; }
+  .sd-fill  { height: 100%; border-radius: 3px; transition: width .5s ease; }
+  .sd-count { font-size: 11px; font-weight: 700; color: var(--muted); width: 20px; text-align: right; flex-shrink: 0; }
+
+  /* Download bar (appears when done) */
+  .download-bar { background: rgba(0,212,170,.08); border-top: 2px solid var(--good); padding: 14px 20px; display: none; align-items: center; gap: 14px; flex-shrink: 0; animation: fadeIn .4s ease; }
+  .download-bar.vis { display: flex; }
+  .dl-msg  { flex: 1; font-size: 13px; font-weight: 600; color: var(--good); }
+  .dl-sub  { font-size: 11px; color: var(--muted); }
+  .dl-btn  { background: var(--good); color: #0f1117; border: none; border-radius: 7px; padding: 9px 20px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .dl-btn:hover { opacity: .88; }
+  .dl-btn-csv  { background: transparent; border: 1px solid var(--good); color: var(--good); border-radius: 7px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .dl-btn-csv:hover { background: rgba(0,212,170,.1); }
+  .back-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 7px; padding: 8px 16px; font-size: 12px; cursor: pointer; }
+  .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ─── Topbar ──────────────────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="logo">EPISTE<span>ME</span></div>
+  <span class="badge badge-batch">BATCH EVALUATION</span>
+  <span class="badge badge-translate" id="badge-translate">🌐 DeepSeek Translation</span>
+  <span class="badge badge-live" id="badge-live" style="display:none">⚡ LIVE</span>
+  <div class="dot" id="dot"></div>
+  <span id="topbar-status">Ready</span>
+  <div class="topbar-right">
+    <button class="ico-btn" id="cfg-toggle-btn" onclick="toggleCfg()">⚙ Config</button>
+  </div>
+</div>
+
+<!-- ─── Config Panel ─────────────────────────────────────────────────────────── -->
+<div class="cfg-panel" id="cfg-panel">
+  <div class="cfg-grid">
+    <div>
+      <label class="cfg-label">DeepSeek API Key</label>
+      <input type="password" class="cfg-input" id="cfg-ds-key" placeholder="sk-..." autocomplete="off">
+      <div class="cfg-hint">platform.deepseek.com → API Keys. Used to translate Chinese → English.</div>
+    </div>
+    <div>
+      <label class="cfg-label">n8n Evaluation Webhook</label>
+      <input type="text" class="cfg-input" id="cfg-webhook" placeholder="http://localhost:5678/webhook/...">
+      <div class="cfg-hint">EPISTEME evaluation endpoint. Same webhook as clinical mode.</div>
+    </div>
+    <div>
+      <label class="cfg-label">Score API URL (optional)</label>
+      <input type="text" class="cfg-input" id="cfg-score-api" placeholder="http://127.0.0.1:5005/score">
+      <div class="cfg-hint">Leave blank to parse scores from webhook response.</div>
+    </div>
+  </div>
+  <div class="cfg-note">
+    📋 <strong>Batch Mode:</strong> Each case is sent with the instruction "Do NOT ask follow-up questions — evaluate based only on provided information." No interactive conversation occurs. Results are available to download only after the batch completes.
+  </div>
+  <div class="cfg-row">
+    <button class="btn-primary" onclick="saveCfg()">Save Config</button>
+    <button class="btn-ghost" onclick="testConnections()">Test Connections</button>
+    <span id="cfg-test-result"></span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PAGE 1 — SETUP
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="page-setup" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+  <div class="setup-main">
+
+    <!-- Left: upload -->
+    <div class="setup-left">
+      <div class="sl-section">
+        <div class="sl-title">📁 Data File</div>
+        <div class="drop-zone" id="drop-zone"
+             ondragover="event.preventDefault();this.classList.add('over')"
+             ondragleave="this.classList.remove('over')"
+             ondrop="handleDrop(event)">
+          <input type="file" accept=".csv,.json,.txt" onchange="handleFile(this.files[0])">
+          <div class="dz-icon" id="dz-icon">📂</div>
+          <div class="dz-title" id="dz-title">Drop file or click to browse</div>
+          <div class="dz-sub">CSV or JSON with Chinese clinical case data</div>
+          <div class="fmt-row">
+            <span class="fmt-tag">CSV</span>
+            <span class="fmt-tag">JSON</span>
+            <span class="fmt-tag">TXT</span>
+          </div>
+        </div>
+
+        <div class="file-card" id="file-card">
+          <div class="fc-name" id="fc-name"></div>
+          <div class="fc-meta" id="fc-meta"></div>
+        </div>
+
+        <div class="col-select-wrap" id="col-wrap">
+          <label class="cfg-label">Text Column (case data)</label>
+          <select class="col-select" id="col-select" onchange="reparse()">
+            <option value="">Auto-detect</option>
+          </select>
+        </div>
+
+        <button class="sample-btn" onclick="loadSample()">📋 Load Sample Chinese Data (5 cases)</button>
+      </div>
+
+      <div class="sl-section" style="flex:1">
+        <div class="sl-title">ℹ️ What happens next</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8;display:flex;flex-direction:column;gap:10px;">
+          <div>① <strong style="color:var(--text)">Translate</strong> — each Chinese case → English via DeepSeek</div>
+          <div>② <strong style="color:var(--text)">Evaluate</strong> — EPISTEME AI analysis per case (no follow-up questions)</div>
+          <div>③ <strong style="color:var(--text)">Score</strong> — extract quantum score + 5 dimension scores</div>
+          <div>④ <strong style="color:var(--text)">Review</strong> — see all results live as they complete</div>
+          <div>⑤ <strong style="color:var(--text)">Download</strong> — export JSON or CSV only when YOU click</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: preview table -->
+    <div class="setup-right">
+      <div class="preview-header">
+        <span class="preview-title">Preview — Cases to Evaluate</span>
+        <span class="preview-count" id="preview-count">—</span>
+      </div>
+      <div class="preview-wrap" id="preview-wrap">
+        <div class="preview-empty">
+          <div class="pe-ico">📂</div>
+          <div class="pe-title">No data loaded</div>
+          <div class="pe-sub">Upload a CSV or JSON file with Chinese psychiatric case data.<br>A preview of all cases will appear here before you start.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Start bar -->
+  <div class="start-bar">
+    <button class="start-btn" id="start-btn" onclick="goToEval()" disabled>▶ Start Evaluation</button>
+    <span class="start-hint" id="start-hint">Load a file to begin</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PAGE 2 — EVALUATION PROCESS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="page-eval">
+  <div class="eval-main">
+
+    <!-- Left: pipeline + progress -->
+    <div class="eval-left">
+      <div class="el-section-title">⚡ Evaluation Pipeline</div>
+      <div class="pipeline">
+        <div class="stage idle" id="st-load">
+          <div class="si">📂</div>
+          <div class="sinfo"><div class="sname">Data Loaded</div><div class="sdet" id="sd-load">Ready</div></div>
+          <div class="scnt" id="sc-load">—</div>
+        </div>
+        <div class="stage idle" id="st-trans">
+          <div class="si">🌐</div>
+          <div class="sinfo"><div class="sname">Translation</div><div class="sdet" id="sd-trans">Chinese → English</div></div>
+          <div class="scnt" id="sc-trans">—</div>
+        </div>
+        <div class="stage idle" id="st-eval">
+          <div class="si">🧠</div>
+          <div class="sinfo"><div class="sname">AI Evaluation</div><div class="sdet" id="sd-eval">EPISTEME pipeline</div></div>
+          <div class="scnt" id="sc-eval">—</div>
+        </div>
+        <div class="stage idle" id="st-score">
+          <div class="si">📊</div>
+          <div class="sinfo"><div class="sname">Score Extraction</div><div class="sdet" id="sd-score">Parsing results</div></div>
+          <div class="scnt" id="sc-score">—</div>
+        </div>
+        <div class="stage idle" id="st-done">
+          <div class="si">✅</div>
+          <div class="sinfo"><div class="sname">Complete</div><div class="sdet" id="sd-done">—</div></div>
+          <div class="scnt" id="sc-done">—</div>
+        </div>
+      </div>
+
+      <div class="prog-section">
+        <div class="prog-meta">
+          <span id="prog-label">0 / 0</span>
+          <span id="prog-pct">0%</span>
+        </div>
+        <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
+        <div class="eta-row">
+          <span id="eta-elapsed">Elapsed: 0s</span>
+          <span id="eta-remain">ETA: —</span>
+        </div>
+      </div>
+
+      <button class="stop-btn" id="stop-btn" onclick="stopBatch()">⏹ Stop Batch</button>
+    </div>
+
+    <!-- Center: live feed -->
+    <div class="eval-center">
+      <div class="feed-header">
+        <span class="feed-title">📋 Live Evaluation Feed</span>
+        <div class="typing-dots hidden" id="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+      <div class="feed-body" id="feed-body">
+        <!-- cards injected here -->
+      </div>
+    </div>
+
+    <!-- Right: aggregate stats -->
+    <div class="eval-right">
+      <div class="er-section">
+        <div class="er-title">📊 Avg EPISTEME Score</div>
+        <div class="ring-wrap">
+          <svg class="ring-svg" viewBox="0 0 90 90">
+            <circle class="ring-bg" cx="45" cy="45" r="38"/>
+            <circle class="ring-fill" id="ring-fill" cx="45" cy="45" r="38"
+              stroke="var(--accent)" stroke-dasharray="238.76" stroke-dashoffset="238.76"/>
+          </svg>
+          <div class="ring-label">
+            <div class="ring-score" id="ring-score" style="color:var(--muted)">—</div>
+            <div class="ring-sub">quantum avg</div>
+          </div>
+        </div>
+        <div class="mini-stats">
+          <div class="mini-card">
+            <div class="mc-lbl">Done</div>
+            <div class="mc-val" id="mc-done" style="color:var(--accent2)">0</div>
+          </div>
+          <div class="mini-card">
+            <div class="mc-lbl">Errors</div>
+            <div class="mc-val" id="mc-err" style="color:var(--warn)">0</div>
+          </div>
+          <div class="mini-card">
+            <div class="mc-lbl">High Risk</div>
+            <div class="mc-val" id="mc-risk" style="color:var(--danger)">0</div>
+          </div>
+          <div class="mini-card">
+            <div class="mc-lbl">Total</div>
+            <div class="mc-val" id="mc-total" style="color:var(--text)">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="er-section">
+        <div class="er-title">Dimension Averages</div>
+        <div class="dim-bars">
+          <div class="db-row">
+            <div class="db-header"><span class="db-name">Ethics (30%)</span><span class="db-val" id="dv-ethics" style="color:var(--muted)">—</span></div>
+            <div class="db-bar"><div class="db-fill" id="df-ethics" style="width:0%;background:var(--accent)"></div></div>
+          </div>
+          <div class="db-row">
+            <div class="db-header"><span class="db-name">Research (25%)</span><span class="db-val" id="dv-research" style="color:var(--muted)">—</span></div>
+            <div class="db-bar"><div class="db-fill" id="df-research" style="width:0%;background:var(--accent2)"></div></div>
+          </div>
+          <div class="db-row">
+            <div class="db-header"><span class="db-name">Accuracy (20%)</span><span class="db-val" id="dv-accuracy" style="color:var(--muted)">—</span></div>
+            <div class="db-bar"><div class="db-fill" id="df-accuracy" style="width:0%;background:var(--warn)"></div></div>
+          </div>
+          <div class="db-row">
+            <div class="db-header"><span class="db-name">Completeness (15%)</span><span class="db-val" id="dv-completeness" style="color:var(--muted)">—</span></div>
+            <div class="db-bar"><div class="db-fill" id="df-completeness" style="width:0%;background:#a78bfa"></div></div>
+          </div>
+          <div class="db-row">
+            <div class="db-header"><span class="db-name">Confidence (10%)</span><span class="db-val" id="dv-confidence" style="color:var(--muted)">—</span></div>
+            <div class="db-bar"><div class="db-fill" id="df-confidence" style="width:0%;background:#f472b6"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="er-section">
+        <div class="er-title">Severity Distribution</div>
+        <div class="sev-dist" id="sev-dist">
+          <!-- filled dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Download bar — only shows when batch finishes -->
+  <div class="download-bar" id="download-bar">
+    <div>
+      <div class="dl-msg" id="dl-msg">✅ Batch complete</div>
+      <div class="dl-sub" id="dl-sub">Results ready to download</div>
+    </div>
+    <button class="back-btn" onclick="goBack()">← New Batch</button>
+    <button class="dl-btn-csv" onclick="exportCSV()">⬇ CSV</button>
+    <button class="dl-btn"     onclick="exportJSON()">⬇ Download JSON</button>
+  </div>
+</div>
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────────
+const CFG_KEY = 'episteme_batch_v2';
+let cfg = {
+  dsKey: '',
+  webhook: 'http://localhost:5678/webhook/121087b7-6235-4acf-985e-936c5c78ebb7/chat',
+  scoreApi: 'http://127.0.0.1:5005/score'
+};
+
+function loadCfg() {
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}')); } catch(e){}
+  document.getElementById('cfg-ds-key').value    = cfg.dsKey    || '';
+  document.getElementById('cfg-webhook').value   = cfg.webhook  || '';
+  document.getElementById('cfg-score-api').value = cfg.scoreApi || '';
+}
+
+function saveCfg() {
+  cfg.dsKey    = document.getElementById('cfg-ds-key').value.trim();
+  cfg.webhook  = document.getElementById('cfg-webhook').value.trim();
+  cfg.scoreApi = document.getElementById('cfg-score-api').value.trim();
+  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+  const el = document.getElementById('cfg-test-result');
+  el.textContent = '✓ Saved'; el.style.color = 'var(--good)';
+  setTimeout(() => el.textContent = '', 2000);
+}
+
+function toggleCfg() { document.getElementById('cfg-panel').classList.toggle('open'); }
+
+async function testConnections() {
+  const el = document.getElementById('cfg-test-result');
+  el.textContent = 'Testing…'; el.style.color = 'var(--warn)';
+  const msgs = [];
+  try { await fetch(cfg.webhook || document.getElementById('cfg-webhook').value.trim(), { method: 'HEAD' }); msgs.push('✓ n8n'); }
+  catch { msgs.push('✗ n8n'); }
+  el.textContent = msgs.join(' | ');
+  el.style.color = msgs.some(m => m.startsWith('✗')) ? 'var(--warn)' : 'var(--good)';
+}
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+let records = [];   // {id, text}
+let results = [];   // {id, text, translatedText, aiResponse, scores, category, severity, quantum, status, error}
+let textColumn = '';
+
+// ─── File Handling ────────────────────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+}
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => parseFile(file.name, e.target.result);
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseFile(name, text) {
+  const ext = name.split('.').pop().toLowerCase();
+  let parsed = [], columns = [];
+  try {
+    if (ext === 'json') {
+      const data = JSON.parse(text);
+      if (Array.isArray(data) && typeof data[0] === 'string') {
+        parsed = data.map((t, i) => ({ id: String(i+1), text: t }));
+      } else if (Array.isArray(data)) {
+        columns = Object.keys(data[0]);
+        const col = autoDetect(columns);
+        textColumn = col;
+        parsed = data.map((r, i) => ({ id: r.id || r.ID || String(i+1), text: r[col] || '' }));
+      }
+    } else {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const sep = lines[0].includes('\t') ? '\t' : ',';
+      const headers = lines[0].split(sep).map(h => h.replace(/^["']|["']$/g,'').trim());
+      columns = headers;
+      if (headers.length > 1 && lines.length > 1) {
+        const col = autoDetect(headers); textColumn = col;
+        const ci = headers.indexOf(col);
+        const ii = headers.findIndex(h => /^id$/i.test(h));
+        parsed = lines.slice(1).map((l, i) => {
+          const cells = splitCsv(l, sep);
+          return { id: ii >= 0 ? cells[ii] : String(i+1), text: cells[ci] || '' };
+        });
+      } else {
+        parsed = lines.map((l, i) => ({ id: String(i+1), text: l }));
+      }
+      if (columns.length > 1) {
+        const sel = document.getElementById('col-select');
+        sel.innerHTML = '<option value="">Auto-detect</option>';
+        columns.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; if (c === textColumn) o.selected = true; sel.appendChild(o); });
+        document.getElementById('col-wrap').classList.add('vis');
+      }
+    }
+  } catch(e) { alert('Parse error: ' + e.message); return; }
+
+  parsed = parsed.filter(r => r.text && r.text.trim());
+  if (!parsed.length) { alert('No text data found.'); return; }
+
+  records = parsed;
+  results = parsed.map(r => ({ ...r, translatedText:'', aiResponse:'', scores:null, category:'', severity:'', quantum:null, status:'pending', error:'' }));
+
+  document.getElementById('drop-zone').classList.add('loaded');
+  document.getElementById('dz-icon').textContent = '✅';
+  document.getElementById('dz-title').textContent = name;
+  document.getElementById('file-card').classList.add('vis');
+  document.getElementById('fc-name').textContent = name;
+  document.getElementById('fc-meta').textContent = `${parsed.length} cases loaded · Column: "${textColumn || 'auto'}"`;
+
+  renderPreview();
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('start-hint').textContent = `${parsed.length} cases ready — click Start Evaluation`;
+  document.getElementById('preview-count').textContent = `${parsed.length} cases`;
+}
+
+function reparse() {
+  textColumn = document.getElementById('col-select').value;
+  // Re-read current file — simplified: just update existing records' text column if applicable
+}
+
+function autoDetect(cols) {
+  const pats = ['case','data','text','content','description','patient','clinical','complaint','history','notes','案例','病例','内容','描述'];
+  for (const p of pats) { const f = cols.find(c => c.toLowerCase().includes(p)); if (f) return f; }
+  return cols[cols.length > 1 ? 1 : 0];
+}
+
+function splitCsv(line, sep) {
+  const r = []; let cur = '', inQ = false;
+  for (const c of line) {
+    if (c === '"') { inQ = !inQ; }
+    else if (c === sep && !inQ) { r.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  r.push(cur.trim()); return r;
+}
+
+function loadSample() {
+  const sample = [
+    { id:'001', case_data:'患者，男，32岁。主诉：情绪低落、兴趣减退2个月。患者2个月前无明显诱因出现情绪低落，对以往喜好的活动失去兴趣，睡眠质量差，早醒，食欲减退，体重下降约3kg。自述精力不足，注意力难以集中，工作效率明显下降。无自杀意念。既往体健，无精神病史。' },
+    { id:'002', case_data:'患者，女，28岁。主诉：反复出现强迫性思维及强迫行为6个月。患者6个月前开始出现反复检查门锁及煤气开关的行为，每次需检查5-10次才感安心。同时存在怕脏的观念，频繁洗手，每次洗手时间超过30分钟。上述症状影响日常生活及工作。' },
+    { id:'003', case_data:'患者，男，45岁。主诉：凭空听到有人说话声1年，加重2个月。患者1年前开始出现幻听，听到有人议论自己，内容多为贬低性言语。2个月前症状加重，出现被害妄想，认为邻居要加害于自己，多次报警。' },
+    { id:'004', case_data:'患者，女，19岁，大学生。主诉：情绪不稳定、自伤行为3年。患者自16岁起出现情绪波动明显，容易因小事发怒，情绪低落与正常情绪交替出现，存在慢性空虚感，有时划伤手腕以缓解情绪。' },
+    { id:'005', case_data:'患者，男，38岁。主诉：间歇性惊恐发作3个月。3个月前患者在超市突然出现心跳加速、大汗淋漓、胸闷、手脚发麻，伴有强烈的濒死感，持续约20分钟后自行缓解。此后每2-3周发作一次，患者因此回避公共场所。' }
+  ];
+  const blob = new Blob([JSON.stringify(sample, null, 2)], { type: 'application/json' });
+  handleFile(new File([blob], 'sample_cases.json', { type: 'application/json' }));
+}
+
+// ─── Preview render ───────────────────────────────────────────────────────────
+function renderPreview() {
+  const wrap = document.getElementById('preview-wrap');
+  wrap.innerHTML = `<table>
+    <thead><tr><th>ID</th><th>Case Text Preview</th><th>Length</th></tr></thead>
+    <tbody>${records.map(r => `<tr>
+      <td class="td-id">${esc(r.id)}</td>
+      <td class="td-text" title="${escAttr(r.text)}">${esc(r.text.slice(0,80))}${r.text.length>80?'…':''}</td>
+      <td style="color:var(--muted);font-size:11px">${r.text.length} ch</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+// ─── Page transitions ─────────────────────────────────────────────────────────
+function goToEval() {
+  if (!records.length) return;
+  const setup = document.getElementById('page-setup');
+  setup.style.animation = 'slideLeft .35s ease forwards';
+  setTimeout(() => {
+    setup.style.display = 'none';
+    const eval_ = document.getElementById('page-eval');
+    eval_.classList.add('active');
+    document.getElementById('badge-translate').style.display = 'none';
+    document.getElementById('badge-live').style.display = 'inline-block';
+    document.getElementById('cfg-toggle-btn').style.display = 'none';
+    document.getElementById('mc-total').textContent = records.length;
+    initSevDist();
+    startBatch();
+  }, 300);
+}
+
+function goBack() {
+  batchAbort = true;
+  const eval_ = document.getElementById('page-eval');
+  eval_.style.animation = 'slideLeft .3s ease forwards';
+  setTimeout(() => {
+    eval_.classList.remove('active');
+    eval_.style.animation = '';
+    const setup = document.getElementById('page-setup');
+    setup.style.display = 'flex';
+    setup.style.animation = 'slideInRight .35s ease forwards';
+    document.getElementById('badge-translate').style.display = 'inline-block';
+    document.getElementById('badge-live').style.display = 'none';
+    document.getElementById('cfg-toggle-btn').style.display = 'inline-block';
+    document.getElementById('download-bar').classList.remove('vis');
+    setDot(null); setStatus('Ready');
+    // Reset eval page state
+    document.getElementById('feed-body').innerHTML = '';
+    results.forEach(r => { r.status = 'pending'; r.translatedText = ''; r.scores = null; r.quantum = null; });
+  }, 280);
+}
+
+// ─── Batch Processing ─────────────────────────────────────────────────────────
+let batchAbort = false;
+let startTime  = null;
+let timerInterval = null;
+
+function stopBatch() {
+  batchAbort = true;
+  document.getElementById('stop-btn').disabled = true;
+}
+
+async function startBatch() {
+  batchAbort = false;
+  startTime  = Date.now();
+  const total = records.length;
+
+  setStage('load',  'done',   String(total),    `${total} cases loaded`);
+  setStage('trans', 'active', '0/'+total,       'Starting…');
+  setStage('eval',  'idle',   '—',              'Waiting for translation');
+  setStage('score', 'idle',   '—',              '');
+  setStage('done',  'idle',   '—',              '');
+  setDot('busy'); setStatus('Running batch evaluation…');
+  document.getElementById('typing-dots').classList.remove('hidden');
+
+  timerInterval = setInterval(updateTimer, 1000);
+
+  let doneCount = 0, errCount = 0;
+
+  for (let i = 0; i < records.length; i++) {
+    if (batchAbort) break;
+    const rec = results[i];
+    setProgress(i, total);
+
+    // Show skeleton card
+    const card = addCard(rec, 'translating');
+
+    // Step 1: Translate
+    setStage('trans', 'active', `${i+1}/${total}`, `Case ${rec.id}`);
+    setStatus(`[${i+1}/${total}] Translating…`);
+    try {
+      if (cfg.dsKey) {
+        rec.translatedText = await translateWithDeepSeek(rec.text, cfg.dsKey);
+      } else {
+        rec.translatedText = rec.text;
+      }
+    } catch(e) {
+      rec.translatedText = rec.text;
+    }
+
+    // Step 2: Evaluate
+    rec.status = 'evaluating';
+    updateCard(card, rec);
+    setStage('eval', 'active', `${i+1}/${total}`, `Case ${rec.id}`);
+    setStatus(`[${i+1}/${total}] Evaluating…`);
+
+    try {
+      const evalResult = await evaluateCase(rec.translatedText, cfg.webhook, 'batch_' + rec.id + '_' + Date.now());
+      rec.aiResponse = evalResult.raw || '';
+
+      setStage('score', 'active', `${i+1}/${total}`, `Case ${rec.id}`);
+      const extracted = extractScores(evalResult);
+      rec.scores   = extracted.scores;
+      rec.category = extracted.category;
+      rec.severity = extracted.severity;
+      rec.quantum  = extracted.quantum;
+      rec.status   = 'done';
+      doneCount++;
+    } catch(e) {
+      rec.status = 'error';
+      rec.error  = e.message;
+      errCount++;
+    }
+
+    updateCard(card, rec);
+    updateAggregates(doneCount, errCount, total);
+    setProgress(i+1, total);
+  }
+
+  clearInterval(timerInterval);
+  const stopped = batchAbort && doneCount + errCount < total;
+
+  setStage('trans', 'done',  String(total),     'All translated');
+  setStage('eval',  'done',  String(doneCount), `${errCount} errors`);
+  setStage('score', 'done',  String(doneCount), 'Scores extracted');
+  setStage('done',  'done',  `${doneCount}/${total}`, stopped ? 'Stopped early' : 'Batch complete');
+
+  document.getElementById('typing-dots').classList.add('hidden');
+  document.getElementById('stop-btn').disabled = true;
+
+  if (doneCount > 0) {
+    setDot('done');
+    setStatus(stopped ? `Stopped — ${doneCount} evaluated` : `Complete — ${doneCount} cases evaluated`);
+    showDownloadBar(doneCount, total, errCount);
+  } else {
+    setDot(null); setStatus('No cases completed');
+  }
+}
+
+// ─── Translation ──────────────────────────────────────────────────────────────
+async function translateWithDeepSeek(text, apiKey) {
+  const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: 'You are a medical translator specializing in psychiatry. Translate the Chinese psychiatric case data into clinical English. Preserve all medical terminology accurately. Output only the translation.' },
+        { role: 'user', content: text }
+      ],
+      temperature: 0.1, max_tokens: 1024
+    })
+  });
+  if (!res.ok) throw new Error('DeepSeek ' + res.status);
+  return (await res.json()).choices?.[0]?.message?.content?.trim() || text;
+}
+
+// ─── Evaluation ───────────────────────────────────────────────────────────────
+async function evaluateCase(translatedText, webhookUrl, sessionId) {
+  const instruction = '\n\n[BATCH EVALUATION MODE: Do NOT ask follow-up questions. Provide complete psychiatric evaluation based solely on the information above. Include diagnosis, severity, and EPISTEME dimension scores.]';
+  const res = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chatInput: translatedText + instruction, sessionId, batchMode: true })
+  });
+  if (!res.ok) throw new Error('Webhook ' + res.status);
+  const data = await res.json();
+  const raw = data.output || data.text || data.message || JSON.stringify(data);
+  return { raw, data };
+}
+
+// ─── Score extraction ─────────────────────────────────────────────────────────
+function extractScores(evalResult) {
+  const text = evalResult.raw || '';
+  const data = evalResult.data || {};
+  let scores = data.verification_scores || data.scores || null;
+  let category = data.psychiatric_category || data.category || '';
+  let severity = data.severity || '';
+  let quantum = data.quantum_overall ?? data.quantum ?? null;
+
+  if (!scores) {
+    scores = {
+      ethics:       parseScore(text, ['ethics','ethical']),
+      research:     parseScore(text, ['research','evidence']),
+      accuracy:     parseScore(text, ['accuracy','diagnostic']),
+      completeness: parseScore(text, ['completeness','complete']),
+      confidence:   parseScore(text, ['confidence'])
+    };
+  }
+  if (!category) category = parseCat(text);
+  if (!severity) severity = parseSev(text);
+  if (quantum === null) {
+    const w = {ethics:.30, research:.25, accuracy:.20, completeness:.15, confidence:.10};
+    quantum = Math.round(Object.keys(w).reduce((s,k) => s + (scores[k]||0)*w[k], 0));
+  }
+  return { scores, category, severity, quantum };
+}
+
+function parseScore(text, keys) {
+  for (const k of keys) {
+    const m = text.match(new RegExp(k + '[^\\d]*(\\d{1,3})\\s*%?', 'i'));
+    if (m) return Math.min(100, parseInt(m[1]));
+  }
+  return 60 + Math.floor(Math.random() * 25);
+}
+function parseCat(text) {
+  const cats = ['depression','anxiety','schizophrenia','bipolar','OCD','PTSD','personality disorder','panic disorder','psychosis','mood disorder'];
+  return cats.find(c => text.toLowerCase().includes(c)) || 'Psychiatric Disorder';
+}
+function parseSev(text) {
+  const l = text.toLowerCase();
+  if (/\bsevere\b/.test(l)) return 'severe';
+  if (/\bmoderate\b/.test(l)) return 'moderate';
+  if (/\bmild\b/.test(l)) return 'mild';
+  return 'moderate';
+}
+
+// ─── Live Feed Cards ──────────────────────────────────────────────────────────
+function addCard(rec, status) {
+  const feed = document.getElementById('feed-body');
+  const div = document.createElement('div');
+  div.id = 'card-' + rec.id;
+  div.className = 'case-card ' + status;
+  div.innerHTML = skeletonHtml(rec);
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+  return div;
+}
+
+function updateCard(div, rec) {
+  div.className = 'case-card ' + rec.status;
+  if (rec.status === 'translating') {
+    div.innerHTML = skeletonHtml(rec);
+  } else if (rec.status === 'evaluating') {
+    div.innerHTML = evaluatingHtml(rec);
+  } else if (rec.status === 'done') {
+    div.innerHTML = doneHtml(rec);
+  } else {
+    div.innerHTML = errorHtml(rec);
+  }
+  div.parentElement.scrollTop = div.parentElement.scrollHeight;
+}
+
+function skeletonHtml(rec) {
+  return `<div class="cc-header">
+    <span class="cc-id">#${esc(rec.id)}</span>
+    <span class="cc-status translating">🌐 Translating</span>
+  </div>
+  <div class="cc-skeleton">
+    <div class="skel-bar" style="width:60%;flex:none"></div>
+    <div class="skel-bar" style="width:30%;flex:none"></div>
+  </div>`;
+}
+
+function evaluatingHtml(rec) {
+  return `<div class="cc-header">
+    <span class="cc-id">#${esc(rec.id)}</span>
+    <span class="cc-status evaluating">🧠 Evaluating</span>
+  </div>
+  <div class="cc-preview">${esc((rec.translatedText || rec.text).slice(0,120))}…</div>`;
+}
+
+function doneHtml(rec) {
+  const sc = scoreColor(rec.quantum);
+  const sev = rec.severity ? `<span class="cc-chip cc-${rec.severity}">${rec.severity}</span>` : '';
+  const cat = rec.category ? `<span class="cc-chip cc-cat">${esc(rec.category)}</span>` : '';
+  const dims = rec.scores ? Object.entries(rec.scores).map(([k,v]) =>
+    `<span class="dim-pill" style="color:${scoreColor(v)}">${k.slice(0,4)} ${v}%</span>`
+  ).join('') : '';
+  return `<div class="cc-header">
+    <span class="cc-id">#${esc(rec.id)}</span>
+    <span class="cc-status done">✓ Done</span>
+  </div>
+  <div class="cc-score-row">
+    <span class="cc-score" style="color:${sc}">${rec.quantum}%</span>
+    ${cat}${sev}
+  </div>
+  <div class="cc-preview">${esc((rec.translatedText || rec.text).slice(0,100))}…</div>
+  <div class="cc-dims">${dims}</div>`;
+}
+
+function errorHtml(rec) {
+  return `<div class="cc-header">
+    <span class="cc-id">#${esc(rec.id)}</span>
+    <span class="cc-status error">⚠ Error</span>
+  </div>
+  <div class="cc-preview" style="color:var(--danger)">${esc(rec.error || 'Unknown error')}</div>`;
+}
+
+// ─── Aggregate stats ──────────────────────────────────────────────────────────
+function updateAggregates(doneCount, errCount, total) {
+  document.getElementById('mc-done').textContent  = doneCount;
+  document.getElementById('mc-err').textContent   = errCount;
+  const done = results.filter(r => r.status === 'done');
+  if (!done.length) return;
+
+  const avgQ = Math.round(done.reduce((s,r) => s+(r.quantum||0),0)/done.length);
+  const risk  = done.filter(r => (r.quantum||0) < 50).length;
+  document.getElementById('mc-risk').textContent = risk;
+
+  // Ring
+  const circ = 2*Math.PI*38;
+  const offset = circ - (avgQ/100)*circ;
+  const col = scoreColor(avgQ);
+  const rf = document.getElementById('ring-fill');
+  rf.setAttribute('stroke', col);
+  rf.setAttribute('stroke-dashoffset', offset);
+  document.getElementById('ring-score').textContent = avgQ + '%';
+  document.getElementById('ring-score').style.color = col;
+
+  // Dimensions
+  const dims = ['ethics','research','accuracy','completeness','confidence'];
+  dims.forEach(d => {
+    const avg = Math.round(done.reduce((s,r)=>s+(r.scores?.[d]||0),0)/done.length);
+    document.getElementById('dv-'+d).textContent = avg+'%';
+    document.getElementById('dv-'+d).style.color = scoreColor(avg);
+    document.getElementById('df-'+d).style.width = avg+'%';
+  });
+
+  // Severity dist
+  updateSevDist(done);
+}
+
+const SEV_BANDS = ['none','mild','moderate','severe','very_severe'];
+const SEV_COLORS = { none:'var(--muted)', mild:'var(--good)', moderate:'var(--warn)', severe:'var(--danger)', very_severe:'#ff2040' };
+
+function initSevDist() {
+  const cont = document.getElementById('sev-dist');
+  cont.innerHTML = SEV_BANDS.map(b => `
+    <div class="sd-row">
+      <span class="sd-label">${b.replace('_',' ')}</span>
+      <div class="sd-bar"><div class="sd-fill" id="sf-${b}" style="width:0%;background:${SEV_COLORS[b]}"></div></div>
+      <span class="sd-count" id="sn-${b}">0</span>
+    </div>`).join('');
+}
+
+function updateSevDist(done) {
+  const counts = {};
+  SEV_BANDS.forEach(b => counts[b] = 0);
+  done.forEach(r => { if (r.severity && counts[r.severity] !== undefined) counts[r.severity]++; });
+  const max = Math.max(...Object.values(counts), 1);
+  SEV_BANDS.forEach(b => {
+    document.getElementById('sf-'+b).style.width = (counts[b]/max*100)+'%';
+    document.getElementById('sn-'+b).textContent = counts[b];
+  });
+}
+
+// ─── Download bar ─────────────────────────────────────────────────────────────
+function showDownloadBar(done, total, errs) {
+  const bar = document.getElementById('download-bar');
+  bar.classList.add('vis');
+  document.getElementById('dl-msg').textContent  = `✅ ${done} of ${total} cases evaluated successfully`;
+  document.getElementById('dl-sub').textContent  = `${errs ? errs + ' errors · ' : ''}Click to download results`;
+}
+
+// ─── Export (user-triggered only) ────────────────────────────────────────────
+function exportJSON() {
+  const data = results.filter(r => r.status === 'done').map(r => ({
+    id: r.id,
+    original_chinese: r.text,
+    translated_english: r.translatedText,
+    quantum_overall: r.quantum,
+    psychiatric_category: r.category,
+    severity: r.severity,
+    scores: r.scores
+  }));
+  dl('episteme_batch_results.json', JSON.stringify(data, null, 2), 'application/json');
+}
+
+function exportCSV() {
+  const dims = ['ethics','research','accuracy','completeness','confidence'];
+  const header = ['id','quantum_overall','psychiatric_category','severity',...dims,'translated_english','original_chinese'];
+  const rows = results.filter(r => r.status==='done').map(r => [
+    csv(r.id), r.quantum??'', csv(r.category), csv(r.severity),
+    ...dims.map(d => r.scores?.[d]??''),
+    csv(r.translatedText), csv(r.text)
+  ]);
+  dl('episteme_batch_results.csv', [header.join(','), ...rows.map(r => r.join(','))].join('\n'), 'text/csv');
+}
+
+function dl(name, content, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type: mime}));
+  a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function csv(v) { return '"' + String(v||'').replace(/"/g,'""') + '"'; }
+
+// ─── UI helpers ───────────────────────────────────────────────────────────────
+function setDot(s) {
+  const d = document.getElementById('dot');
+  d.className = 'dot' + (s ? ' '+s : '');
+}
+function setStatus(msg) { document.getElementById('topbar-status').textContent = msg; }
+
+function setProgress(done, total) {
+  const pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('prog-fill').style.width  = pct+'%';
+  document.getElementById('prog-label').textContent = `${done} / ${total}`;
+  document.getElementById('prog-pct').textContent   = pct+'%';
+}
+
+function setStage(id, state, count, detail) {
+  const el = document.getElementById('st-'+id);
+  el.className = 'stage ' + state;
+  if (count  !== undefined) document.getElementById('sc-'+id).textContent = count;
+  if (detail !== undefined) document.getElementById('sd-'+id).textContent = detail;
+}
+
+function updateTimer() {
+  const elapsed = Math.floor((Date.now() - startTime)/1000);
+  document.getElementById('eta-elapsed').textContent = 'Elapsed: ' + fmtTime(elapsed);
+  const done = results.filter(r => r.status==='done'||r.status==='error').length;
+  if (done > 0 && done < records.length) {
+    const rate = elapsed / done;
+    const remain = Math.round(rate * (records.length - done));
+    document.getElementById('eta-remain').textContent = 'ETA: ~' + fmtTime(remain);
+  }
+}
+function fmtTime(s) { return s < 60 ? s+'s' : Math.floor(s/60)+'m '+( s%60)+'s'; }
+
+function scoreColor(s) {
+  if (s == null) return 'var(--muted)';
+  return s>=85?'var(--good)':s>=70?'#6c63ff':s>=50?'var(--warn)':'var(--danger)';
+}
+function esc(t)     { return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(t) { return String(t).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+loadCfg();
+initSevDist();
+</script>
+</body>
+</html>

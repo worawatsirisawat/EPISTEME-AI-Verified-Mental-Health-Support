@@ -1,0 +1,4 @@
+# Privacy NER service (privacy_ner_service.py)
+flask
+flask-cors
+pythainlp

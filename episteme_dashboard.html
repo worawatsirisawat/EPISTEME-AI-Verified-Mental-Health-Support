@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPISTEME — Psychiatric Clinical Decision Support</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3e;
+    --accent: #6c63ff; --accent2: #00d4aa; --danger: #ff4757;
+    --warn: #ffa502; --text: #e8eaf6; --muted: #8892b0;
+    --good: #00d4aa; --mid: #ffa502; --low: #ff4757;
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Top bar */
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .logo { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+  .logo span { color: var(--accent2); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 6px var(--good); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .session-label { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* Main layout */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Chat panel */
+  .chat-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .msg { max-width: 85%; display: flex; flex-direction: column; gap: 4px; }
+  .msg.user { align-self: flex-end; }
+  .msg.bot  { align-self: flex-start; }
+  .msg-bubble { padding: 12px 16px; border-radius: 12px; line-height: 1.6; white-space: pre-wrap; font-size: 14px; }
+  .msg.user .msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot  .msg-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg-time { font-size: 11px; color: var(--muted); }
+  .msg.user .msg-time { text-align: right; }
+  .typing { display: flex; gap: 4px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; border-bottom-left-radius: 4px; width: fit-content; }
+  .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bounce .8s infinite; }
+  .typing span:nth-child(2){animation-delay:.15s} .typing span:nth-child(3){animation-delay:.3s}
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
+
+  /* Chat input */
+  .chat-input-area { padding: 16px; border-top: 1px solid var(--border); display: flex; gap: 10px; background: var(--surface); }
+  .chat-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px; resize: none; outline: none; font-family: inherit; min-height: 44px; max-height: 120px; }
+  .chat-input:focus { border-color: var(--accent); }
+  .send-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 0 20px; cursor: pointer; font-size: 20px; transition: opacity .2s; flex-shrink: 0; }
+  .send-btn:hover { opacity: .85; }
+  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Sidebar */
+  .sidebar { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; background: var(--surface); overflow-y: auto; }
+  .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+  /* Quantum Score */
+  .quantum-ring { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  .ring-wrap { position: relative; width: 80px; height: 80px; flex-shrink: 0; }
+  .ring-svg { width: 80px; height: 80px; transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: var(--border); stroke-width: 8; }
+  .ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset .6s ease, stroke .4s; }
+  .ring-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+  .ring-score { font-size: 20px; font-weight: 700; line-height: 1; }
+  .ring-pct { font-size: 10px; color: var(--muted); }
+  .quantum-meta { flex: 1; }
+  .quantum-cat { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; text-transform: capitalize; }
+  .quantum-sev { font-size: 12px; color: var(--muted); }
+  .quantum-delta { font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 20px; display: inline-block; margin-top: 6px; }
+  .delta-pos { background: rgba(0,212,170,.15); color: var(--good); }
+  .delta-neg { background: rgba(255,71,87,.15); color: var(--danger); }
+  .delta-zero { background: rgba(136,146,176,.1); color: var(--muted); }
+
+  /* Dimension bars */
+  .dim-list { display: flex; flex-direction: column; gap: 10px; }
+  .dim-row { display: flex; flex-direction: column; gap: 4px; }
+  .dim-header { display: flex; justify-content: space-between; align-items: center; }
+  .dim-name { font-size: 12px; color: var(--muted); }
+  .dim-right { display: flex; align-items: center; gap: 6px; }
+  .dim-val { font-size: 13px; font-weight: 600; }
+  .dim-delta { font-size: 11px; font-weight: 700; }
+  .bar-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .6s ease, background .4s; }
+
+  /* Clinical badges */
+  .badge-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 600; }
+  .badge-cat { background: rgba(108,99,255,.2); color: var(--accent); border: 1px solid rgba(108,99,255,.3); }
+  .badge-sev-mild { background: rgba(0,212,170,.2); color: var(--good); border: 1px solid rgba(0,212,170,.3); }
+  .badge-sev-moderate { background: rgba(255,165,2,.2); color: var(--warn); border: 1px solid rgba(255,165,2,.3); }
+  .badge-sev-severe { background: rgba(255,71,87,.2); color: var(--danger); border: 1px solid rgba(255,71,87,.3); }
+
+  /* No data state */
+  .no-data { text-align: center; padding: 30px 16px; color: var(--muted); font-size: 13px; }
+  .no-data-icon { font-size: 32px; margin-bottom: 8px; }
+
+  /* Last updated */
+  .last-updated { font-size: 11px; color: var(--muted); text-align: right; padding: 8px 16px; }
+
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">EPISTE<span>ME</span></div>
+  <div class="status-dot" id="dot"></div>
+  <span style="font-size:13px;color:var(--muted);">Psychiatric Clinical Decision Support</span>
+  <span class="session-label" id="session-label">Session: —</span>
+</div>
+
+<div class="main">
+  <!-- Chat panel -->
+  <div class="chat-panel">
+    <div class="chat-messages" id="messages">
+      <div class="msg bot">
+        <div class="msg-bubble">🧠 EPISTEME พร้อมรับข้อมูลผู้ป่วย<br><br>กรุณาอธิบายอาการของผู้ป่วย (ภาษาไทยหรืออังกฤษ)<br><em style="color:var(--muted);font-size:12px;">Describe patient presentation in Thai or English</em></div>
+        <div class="msg-time">System</div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <textarea class="chat-input" id="input" placeholder="Describe patient presentation (Thai or English)..." rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMsg()">➤</button>
+    </div>
+  </div>
+
+  <!-- Score sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">📊 EPISTEME Score</div>
+      <div id="score-content">
+        <div class="no-data"><div class="no-data-icon">⏳</div>Waiting for first evaluation…</div>
+      </div>
+    </div>
+    <div class="sidebar-section" id="dim-section" style="display:none">
+      <div class="sidebar-title">Dimension Scores</div>
+      <div class="dim-list" id="dim-list"></div>
+    </div>
+    <div class="sidebar-section" id="badge-section" style="display:none">
+      <div class="sidebar-title">Clinical Profile</div>
+      <div class="badge-row" id="badge-row"></div>
+    </div>
+    <div class="last-updated" id="last-updated"></div>
+  </div>
+</div>
+
+<script>
+const CHAT_URL   = 'http://localhost:5678/webhook/121087b7-6235-4acf-985e-936c5c78ebb7/chat';
+const SCORE_URL  = 'http://127.0.0.1:5005/score';
+const POLL_MS    = 3000;
+
+let sessionId = 'sess_' + Date.now();
+let prevScoreData = null;
+
+document.getElementById('session-label').textContent = 'Session: ' + sessionId.slice(-8);
+
+// ─── Chat ───────────────────────────────────────────────────────────
+function now() {
+  return new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'});
+}
+
+function appendMsg(role, text) {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `<div class="msg-bubble">${escHtml(text)}</div><div class="msg-time">${now()}</div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const wrap = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot'; div.id = 'typing-indicator';
+  div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  wrap.appendChild(div); wrap.scrollTop = wrap.scrollHeight;
+}
+function hideTyping() { const t = document.getElementById('typing-indicator'); if(t) t.remove(); }
+
+function escHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+async function sendMsg() {
+  const inp = document.getElementById('input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = ''; inp.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+
+  appendMsg('user', msg);
+  showTyping();
+
+  try {
+    const res = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ chatInput: msg, sessionId })
+    });
+    const data = await res.json();
+    hideTyping();
+    const reply = data.output || data.text || data.message || JSON.stringify(data);
+    appendMsg('bot', reply);
+  } catch(e) {
+    hideTyping();
+    appendMsg('bot', '⚠️ Connection error: ' + e.message);
+  }
+  document.getElementById('send-btn').disabled = false;
+  inp.focus();
+}
+
+// Auto-resize textarea
+document.getElementById('input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// ─── Score Sidebar ───────────────────────────────────────────────────
+const DIM_LABELS = {
+  ethics:       { label: 'Ethics Compliance', weight: '30%' },
+  research:     { label: 'Research Backing',  weight: '25%' },
+  accuracy:     { label: 'Diagnostic Accuracy', weight: '20%' },
+  completeness: { label: 'Clinical Completeness', weight: '15%' },
+  confidence:   { label: 'Confidence',        weight: '10%' }
+};
+
+function scoreColor(s) {
+  return s >= 85 ? 'var(--good)' : s >= 70 ? 'var(--accent2)' : s >= 50 ? 'var(--warn)' : 'var(--danger)';
+}
+
+function deltaHtml(d, large) {
+  if (d === null || d === undefined) return '';
+  if (d === 0) return large
+    ? `<span class="quantum-delta delta-zero">±0</span>`
+    : `<span class="dim-delta" style="color:var(--muted)">±0</span>`;
+  const sign = d > 0 ? '+' : '';
+  const cls  = d > 0 ? 'delta-pos' : 'delta-neg';
+  if (large) return `<span class="quantum-delta ${cls}">${sign}${d}</span>`;
+  const col  = d > 0 ? 'var(--good)' : 'var(--danger)';
+  return `<span class="dim-delta" style="color:${col}">${sign}${d}</span>`;
+}
+
+function renderSidebar(data) {
+  if (!data || !data.quantum_overall) return;
+
+  const q   = data.quantum_overall;
+  const qd  = data.quantum_delta;
+  const scores = data.verification_scores || {};
+  const prevScores = prevScoreData?.verification_scores || {};
+  const cat = data.psychiatric_category || '—';
+  const sev = data.severity || '—';
+
+  // Ring
+  const circ = 2 * Math.PI * 34;  // r=34
+  const offset = circ - (q / 100) * circ;
+  const col = scoreColor(q);
+
+  document.getElementById('score-content').innerHTML = `
+    <div class="quantum-ring">
+      <div class="ring-wrap">
+        <svg class="ring-svg" viewBox="0 0 80 80">
+          <circle class="ring-bg" cx="40" cy="40" r="34"/>
+          <circle class="ring-fill" cx="40" cy="40" r="34"
+            stroke="${col}"
+            stroke-dasharray="${circ}"
+            stroke-dashoffset="${offset}"/>
+        </svg>
+        <div class="ring-label">
+          <div class="ring-score" style="color:${col}">${q}</div>
+          <div class="ring-pct">%</div>
+        </div>
+      </div>
+      <div class="quantum-meta">
+        <div class="quantum-cat">${cat}</div>
+        <div class="quantum-sev">${sev}</div>
+        ${deltaHtml(qd, true)}
+      </div>
+    </div>`;
+
+  // Dimensions
+  const dimSection = document.getElementById('dim-section');
+  const dimList    = document.getElementById('dim-list');
+  dimSection.style.display = 'block';
+  dimList.innerHTML = Object.entries(DIM_LABELS).map(([k, meta]) => {
+    const val  = scores[k] || 0;
+    const prev = prevScores[k] || null;
+    const dd   = (prev !== null) ? (val - prev) : null;
+    return `
+      <div class="dim-row">
+        <div class="dim-header">
+          <span class="dim-name">${meta.label} <span style="opacity:.5">${meta.weight}</span></span>
+          <div class="dim-right">
+            ${deltaHtml(dd, false)}
+            <span class="dim-val" style="color:${scoreColor(val)}">${val}%</span>
+          </div>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${val}%;background:${scoreColor(val)}"></div></div>
+      </div>`;
+  }).join('');
+
+  // Badges
+  const badgeSection = document.getElementById('badge-section');
+  const badgeRow     = document.getElementById('badge-row');
+  badgeSection.style.display = 'block';
+  const sevClass = sev === 'mild' ? 'badge-sev-mild' : sev === 'moderate' ? 'badge-sev-moderate' : 'badge-sev-severe';
+  badgeRow.innerHTML = `<span class="badge badge-cat">${cat}</span><span class="badge ${sevClass}">${sev}</span>`;
+
+  document.getElementById('last-updated').textContent = 'Updated ' + now();
+  prevScoreData = data;
+}
+
+async function pollScore() {
+  try {
+    const res  = await fetch(SCORE_URL + '?session_id=' + sessionId);
+    const data = await res.json();
+    renderSidebar(data);
+    document.getElementById('dot').style.background = 'var(--good)';
+  } catch(e) {
+    document.getElementById('dot').style.background = 'var(--danger)';
+  }
+}
+
+setInterval(pollScore, POLL_MS);
+pollScore();
+</script>
+</body>
+</html>

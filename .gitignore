@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────
+# Secrets & credentials — NEVER commit
+# ─────────────────────────────────────────────────────────────
+.env
+*.env
+!.env.example
+credentials*
+*credentials*
+secrets*
+*.pem
+*.key
+.n8n/
+*.n8nconfig
+
+# ─────────────────────────────────────────────────────────────
+# Session / patient / benchmark data — NEVER commit
+# (real session data + restricted-license datasets)
+# ─────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+episteme_sessions.db
+100_cases.json
+depression_instances/
+wav_data/
+*.xlsx
+*.xls
+
+# Restricted research data (PhysioNet/MIMIC are research-use-only DUA;
+# PDCH is CC BY-NC-ND) — must never appear in a public repo
+mimic*/
+physionet*/
+*mimic*
+*physionet*
+
+# ─────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# ─────────────────────────────────────────────────────────────
+# Node.js
+# ─────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ─────────────────────────────────────────────────────────────
+# Editors / OS
+# ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
